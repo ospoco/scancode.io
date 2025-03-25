@@ -1,0 +1,11 @@
+name: scancodeio
+services:
+  db:
+    image: docker.io/library/postgres:13
+    env_file:
+      - docker.env
+    volumes:
+      - db_data:/var/lib/postgresql/data/
+    # Removed shm_size parameter
+    restart: always
+
