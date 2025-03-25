@@ -64,9 +64,13 @@ RUN apt-get update \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Create the APP_USER group and user
-RUN addgroup --system $APP_USER \
- && adduser --system --group --home=$APP_DIR $APP_USER \
+# Create the APP_USER group and user (can be overridden by build args)
+ARG HOST_UID=1000
+ARG HOST_GID=1000
+
+# Create a group and user with host's UID/GID
+RUN groupadd -g $HOST_GID $APP_USER \
+ && useradd -m -u $HOST_UID -g $HOST_GID -d $APP_DIR $APP_USER \
  && chown $APP_USER:$APP_USER $APP_DIR
 
 # Create the /var/APP_NAME directory with proper permission for APP_USER
@@ -75,6 +79,13 @@ RUN mkdir -p /var/$APP_NAME \
 
 # Setup the work directory and the user as APP_USER for the remaining stages
 WORKDIR $APP_DIR
+
+# Add support for host user specific cache directories
+RUN mkdir -p /opt/scancodeio/.cache/scancode-tk \
+ && chown -R $APP_USER:$APP_USER /opt/scancodeio/.cache \
+ && chmod -R 775 /opt/scancodeio/.cache
+
+# Start as APP_USER (will be overridden by docker-compose.yml)
 USER $APP_USER
 
 # Create the virtualenv

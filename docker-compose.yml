@@ -1,6 +1,7 @@
+name: scancodeio
 services:
   db:
-    image: postgres:13
+    image: docker.io/library/postgres:13
     env_file:
       - docker.env
     volumes:
@@ -9,7 +10,7 @@ services:
     restart: always
 
   redis:
-    image: redis
+    image: docker.io/library/redis
     # Enable redis data persistence using the "Append Only File" with the
     # default policy of fsync every second. See https://redis.io/topics/persistence
     command: redis-server --appendonly yes
@@ -18,25 +19,38 @@ services:
     restart: always
 
   web:
-    build: .
+    build:
+      context: .
+      args:
+        HOST_UID: 1000
+        HOST_GID: 1000
     command: wait-for-it --strict --timeout=60 db:5432 -- sh -c "
+        if [ ! -w /opt/scancodeio/static_files ]; then
+            mkdir -p /opt/scancodeio/static_files
+            echo 'Created static_files directory'
+        fi &&
         ./manage.py migrate &&
         ./manage.py collectstatic --no-input --verbosity 0 --clear &&
         gunicorn scancodeio.wsgi:application --bind :8000 --timeout 600 --workers 8 ${GUNICORN_RELOAD_FLAG:-}"
     env_file:
       - docker.env
-    expose:
-      - 8000
+    ports:
+      - "8001:8000"  # Expose web container port to host on 8001
     volumes:
       - .env:/opt/scancodeio/.env
       - /etc/scancodeio/:/etc/scancodeio/
       - workspace:/var/scancodeio/workspace/
-      - static:/var/scancodeio/static/
+      - ./static:/opt/scancodeio/static_files
     depends_on:
       - db
+    restart: always
 
   worker:
-    build: .
+    build:
+      context: .
+      args:
+        HOST_UID: 1000
+        HOST_GID: 1000
     # Ensure that potential db migrations run first by waiting until "web" is up
     command: wait-for-it --strict --timeout=120 web:8000 -- sh -c "
         ./manage.py rqworker --worker-class scancodeio.worker.ScanCodeIOWorker
@@ -52,22 +66,13 @@ services:
       - redis
       - db
       - web
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "${NGINX_PUBLISHED_HTTP_PORT:-80}:80"
-      - "${NGINX_PUBLISHED_HTTPS_PORT:-443}:443"
-    volumes:
-      - ./etc/nginx/conf.d/:/etc/nginx/conf.d/
-      - /var/www/html:/var/www/html
-      - static:/var/scancodeio/static/
-    depends_on:
-      - web
     restart: always
+    
+  # Removing the nginx container as we're using the system's nginx service
+  # We're exposing the web container directly to be accessed by the host's nginx
 
   clamav:
-    image: clamav/clamav
+    image: docker.io/clamav/clamav
     volumes:
       - clamav_data:/var/lib/clamav
       - workspace:/var/scancodeio/workspace/
@@ -77,5 +82,4 @@ volumes:
   db_data:
   redis_data:
   clamav_data:
-  static:
   workspace:

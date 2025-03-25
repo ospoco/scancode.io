@@ -22,6 +22,8 @@ TAGS
 Include
 Lib
 .env
+.envrc
+.claude-scratchpad
 Procfile
 tmp
 .Python
